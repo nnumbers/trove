@@ -108,8 +108,18 @@ class XtraBackupIncremental(XtraBackup):
     def add_incremental_opts(self) -> bool:
         cmd = ["xtrabackup", "--version"]
         _, stderr = processutils.execute(*cmd)
+        version_match = re.search(
+            r'xtrabackup version (\d+\.\d+\.\d+)',
+            str(stderr)
+        )
+        if not version_match:
+            raise ValueError(
+                f'Unable to determine xtrabackup version: {stderr}'
+        )
         xbackup_version = semantic_version.Version.coerce(
-            str(stderr).split()[2])
+            version_match.group(1)
+        )
+        
         strict_mode_version = semantic_version.Version("8.0.27")
         return xbackup_version < strict_mode_version
 
