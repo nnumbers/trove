@@ -13,6 +13,7 @@
 #    limitations under the License.
 
 import re
+import os
 
 from oslo_concurrency import processutils
 from oslo_config import cfg
@@ -106,10 +107,27 @@ class XtraBackupIncremental(XtraBackup):
     # NOTE: Since 8.0.27, xtrabackup enables strict mode by default.
     @property
     def add_incremental_opts(self) -> bool:
-        with open('/opt/xtrabackup.version', 'r') as file:
-            version = file.read()
-        LOG.info('xtrabackup parsed version: %s', version)
-        xbackup_version = semantic_version.Version.coerce(version)
+
+        if os.path.isfile( '/opt/xtrabackup.version' ):
+            with open('/opt/xtrabackup.version', 'r') as file:
+                version = file.read()
+            LOG.info('xtrabackup parsed version: %s', version)
+            xbackup_version = semantic_version.Version.coerce(version)
+        else:
+            cmd = ["xtrabackup", "--version"]
+            _, stderr = processutils.execute(*cmd)
+            version_match = re.search(
+                r'xtrabackup version (\d+\.\d+\.\d+)',
+                str(stderr)
+            )
+            if not version_match:
+                raise ValueError(
+                    f'Unable to determine xtrabackup version: {stderr}'
+            )
+            xbackup_version = semantic_version.Version.coerce(
+                version_match.group(1)
+            )
+        
         strict_mode_version = semantic_version.Version("8.0.27")
         return xbackup_version < strict_mode_version
 
