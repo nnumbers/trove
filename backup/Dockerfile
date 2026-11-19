@@ -1,4 +1,5 @@
-FROM ubuntu:22.04
+ARG BASE_OS_VERSION=22.04
+FROM ubuntu:$BASE_OS_VERSION
 LABEL maintainer="anlin.kong@gmail.com"
 
 ARG DATASTORE="mysql"
@@ -22,7 +23,7 @@ RUN apt-get update \
     && apt-get install $APTOPTS build-essential python3-setuptools python3-all python3-all-dev python3-pip libffi-dev libssl-dev libxml2-dev libxslt1-dev libyaml-dev libpq-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
-    && pip3 --no-cache-dir install -U -r requirements.txt \
+    && pip3 --no-cache-dir install -U -r requirements.txt --break-system-packages \
     && curl -sSL https://github.com/Yelp/dumb-init/releases/download/v1.2.2/dumb-init_1.2.2_amd64 -o /usr/local/bin/dumb-init \
     && chmod +x /usr/local/bin/dumb-init
 
