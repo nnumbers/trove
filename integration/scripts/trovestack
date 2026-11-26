@@ -553,7 +553,7 @@ function cmd_start_deps() {
         sudo losetup -f --show ${VOLUME_BACKING_FILE}
     fi
 
-    if ! egrep -q ${SWIFT_DATA_DIR}/drives/sdb1 /proc/mounts; then
+    if ! grep -E ${SWIFT_DATA_DIR}/drives/sdb1 /proc/mounts; then
         exclaim "Re-mounting Swift Disk Image"
         sudo mount -t xfs -o loop,noatime,nodiratime,nobarrier,logbufs=8  ${SWIFT_DISK_IMAGE} ${SWIFT_DATA_DIR}/drives/sdb1 || true
     fi
@@ -633,25 +633,16 @@ function mod_confs() {
     sed -i "s/%admin_password%/$ADMIN_PASSWORD/g" $TEST_CONF
     sed -i "s/%service_password%/$SERVICE_PASSWORD/g" $TEST_CONF
 
-    # Enable neutron tests if needed
-    sed -i "s/%neutron_enabled%/$ENABLE_NEUTRON/g" $TEST_CONF
-
     # Enable backup related tests if Swift is enabled
     sed -i "s/%swift_enabled%/$ENABLE_SWIFT/g" $TEST_CONF
 
     # If neutron is enabled, the devstack plugin has already set up the shared
     # private network for testing.
-    if [[ $ENABLE_NEUTRON = true ]]; then
-        TROVE_NET_ID=$(openstack $CLOUD_ADMIN_ARG network list | grep " $TROVE_PRIVATE_NETWORK_NAME " | awk '{print $2}')
-        TROVE_SUBNET_ID=$(openstack $CLOUD_ADMIN_ARG subnet list | grep " $TROVE_PRIVATE_SUBNET_NAME " | awk '{print $2}')
-        echo "Using network ${TROVE_PRIVATE_NETWORK_NAME} (${TROVE_NET_ID}): ${TROVE_PRIVATE_SUBNET_NAME} (${TROVE_SUBNET_ID})"
-        sed -i "s,%shared_network%,$TROVE_NET_ID,g" $TEST_CONF
-        sed -i "s,%shared_network_subnet%,$TROVE_SUBNET_ID,g" $TEST_CONF
-    else
-        # do not leave invalid keys in the configuration when using Nova for networking
-        sed -i "/%shared_network%/d" $TEST_CONF
-        sed -i "/%shared_network_subnet%/d" $TEST_CONF
-    fi
+    TROVE_NET_ID=$(openstack $CLOUD_ADMIN_ARG network list | grep " $TROVE_PRIVATE_NETWORK_NAME " | awk '{print $2}')
+    TROVE_SUBNET_ID=$(openstack $CLOUD_ADMIN_ARG subnet list | grep " $TROVE_PRIVATE_SUBNET_NAME " | awk '{print $2}')
+    echo "Using network ${TROVE_PRIVATE_NETWORK_NAME} (${TROVE_NET_ID}): ${TROVE_PRIVATE_SUBNET_NAME} (${TROVE_SUBNET_ID})"
+    sed -i "s,%shared_network%,$TROVE_NET_ID,g" $TEST_CONF
+    sed -i "s,%shared_network_subnet%,$TROVE_SUBNET_ID,g" $TEST_CONF
 
     if [[ "$DATASTORE_TYPE" = "vertica" ]]; then
         # Vertica needs more time than mysql for its boot/start/stop operations.
@@ -776,10 +767,11 @@ function cmd_build_image() {
       sudo $PKG_MGR config-manager --set-enabled epel
       sudo $HTTP_PROXY $PKG_MGR $PKG_GET_ARGS install qemu-img git kpartx debootstrap squashfs-tools python3-pip python3-setuptools zstd
     else
-      sudo $HTTP_PROXY $PKG_MGR $PKG_GET_ARGS install qemu-utils git kpartx debootstrap squashfs-tools python3-pip python3-setuptools
+      sudo $HTTP_PROXY $PKG_MGR $PKG_GET_ARGS install qemu-utils git kpartx debootstrap squashfs-tools python3-pip python3-setuptools python3-venv
     fi
-    sudo -H $HTTP_PROXY pip3 install diskimage-builder
-
+    python3 -m venv ~/diskimage-builder-env
+    sudo $HTTP_PROXY ~/diskimage-builder-env/bin/pip3 install setuptools diskimage-builder
+    source ~/diskimage-builder-env/bin/activate
     build_guest_image ${image_guest_os} ${image_guest_release} ${dev_mode} ${guest_username} ${output}
 }
 
