@@ -574,6 +574,7 @@ class BaseMySqlApp(service.BaseDbApp):
                     LOG.error("Unable to set %(key)s with value %(value)s.",
                               output)
 
+
     def start_db(self, update_db=False, ds_version=None, command=None,
                  extra_volumes=None):
         """Start and wait for database service."""
@@ -649,12 +650,40 @@ class BaseMySqlApp(service.BaseDbApp):
             raise exception.TroveError(_("Failed to start mysql"))
 
     def wipe_ib_logfiles(self):
-        """Destroys the iblogfiles.
+        """Remove ib_logfileN only when the server still needs that.
 
-        If for some reason the selected log size in the conf changes from the
-        current size of the files MySQL will fail to start, so we delete the
-        files to be safe.
+        MariaDB 10.8+ (MDEV-27199) refuses to start when the existing redo
+        log files are missing; the server resizes them itself. Older
+        servers recreate the files, so removing them is required there when
+        innodb_log_file_size changes.
+
+        BaseMySqlApp is shared by the MySQL and the MariaDB datastores, so
+        the manager is checked first: the 10.8 mark is MariaDB numbering.
+        MySQL manages its own redo from 8.0.30 on, where the files moved to
+        #innodb_redo and the size is set by innodb_redo_log_capacity.
         """
+        manager = str(CONF.datastore_manager or "").strip().lower()
+        if manager == "mariadb":
+            managed_from = (10, 8, 0)
+        elif manager == "mysql":
+            managed_from = (8, 0, 30)
+        else:
+            LOG.warning("Datastore manager %r is neither MariaDB nor MySQL; "
+                        "keeping the existing iblogfile files.", manager)
+            return
+        version = self._redo_log_version()
+        if version is None:
+            LOG.warning("Datastore version %s does not allow to tell the "
+                        "server series; keeping the existing iblogfile "
+                        "files.", CONF.datastore_version)
+            return
+        label = "MariaDB" if manager == "mariadb" else "MySQL"
+        if version >= managed_from:
+            LOG.info("%s %s: keeping the redo log (ib_logfile0/1).",
+                     label, CONF.datastore_version)
+            return
+        LOG.info("%s %s: removing ib_logfile0/1 before start.",
+                 label, CONF.datastore_version)
         for index in range(2):
             try:
                 # On restarts, sometimes these are wiped. So it can be a race
@@ -667,6 +696,16 @@ class BaseMySqlApp(service.BaseDbApp):
             except exception.ProcessExecutionError:
                 LOG.exception("Could not delete logfile.")
                 raise
+
+    @staticmethod
+    def _redo_log_version():
+        """Return the (major, minor, patch) of the datastore, or None."""
+        raw = str(CONF.datastore_version or "")
+        digits = "".join(ch if ch.isdigit() else "." for ch in raw)
+        parts = [p for p in digits.split(".") if p]
+        if len(parts) < 2:
+            return None
+        return tuple(int(p) for p in (parts + ["0", "0"])[:3])
 
     def restart(self):
         LOG.info("Restarting mysql")
