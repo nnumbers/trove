@@ -97,6 +97,9 @@ elif [ "${OPT_DATASTORE}" = "mariadb" ]; then
 			chmod u+x "./mariadb_repo_setup"
 			if $(./mariadb_repo_setup --mariadb-server-version=${OPT_DATASTORE_VERSION}); then
 				apt-get install ${APTOPTS} mariadb-backup
+				if [ ! -e "/usr/sbin/mysqld" ] && [ ! -L "/usr/sbin/mysqld" ]; then
+					ln -sf /usr/sbin/mariadbd /usr/sbin/mysqld
+				fi
 			else
 				echo "mariadb_repo_setup command failed"
 				exit 1
